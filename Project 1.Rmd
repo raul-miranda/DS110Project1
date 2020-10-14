@@ -1,0 +1,415 @@
+---
+title: "Project 1"
+author: "Raul Miranda"
+date: "10/12/2020"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+# options(repos="https://cran.rstudio.com")
+```
+
+### Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(psych)
+library(RColorBrewer)
+library(lubridate)
+# install.packages("devtools")
+# install package "patchwork" to combine ggplots into same graph (see https://patchwork.data-imaginist.com)
+devtools::install_github("thomasp85/patchwork")   # it may be outdated
+# install.packages("patchwork", repos = "https://cran.rstudio.com/bin/macosx/contrib/4.0/patchwork_1.0.1.tgz")
+# devtools::install_github("pdil/usmap")
+library(patchwork)
+library(usmap)
+```
+
+### Read datasets
+
+```{r}
+setwd("/Users/raulmiranda/Desktop/DATA 110- Fall 2020/Databases")
+mpv <- read.csv("MPVDatasetDownload.csv")
+# mpv_PD <- read.csv("MPVDataset_by PD.csv")        # not used in this project
+# mpv_State <- read.csv("MPVDataset_by State.csv")  # not used in this project
+# str(mpv)
+mpv
+```
+
+### Clean the dataset: 
+
+Select and rename: Age, Gender, Race, Date, City, State, Zipcode, County, Agency, Cause, Disposition, Charges, Mental, Unarmed, Weapon, Threat, Fleeing, Camera
+
+Clean the gender and race columns
+
+```{r}
+mpv_clean <- select(mpv, "age"="Victim.s.age", "gender"="Victim.s.gender", "race"="Victim.s.race", "date"="Date.of.Incident..month.day.year.", "city"="City", "state"="State","zip"= "Zipcode", "agency"="Agency.responsible.for.death", "cause" = "Cause.of.death", "disposition" = "Official.disposition.of.death..justified.or.other.", "charges" = "Criminal.Charges.", "mental" = "Symptoms.of.mental.illness.", "unarmed"="Unarmed.Did.Not.Have.an.Actual.Weapon", "weapon" = "Alleged.Weapon..Source..WaPo.and.Review.of.Cases.Not.Included.in.WaPo.Database.", "threat"="Alleged.Threat.Level..Source..WaPo.", "fleeing"="Fleeing..Source..WaPo.", "camera"="Body.Camera..Source..WaPo.")
+mpv_clean$gender <- trimws(mpv_clean$gender)   # remove trailing spaces in gender column
+mpv_clean$gender [mpv_clean$gender == ""] <- "Unknown"
+mpv_clean$race   [mpv_clean$race == "Native American"] <- "Native"
+mpv_clean$race   [mpv_clean$race == "Pacific Islander"] <- "Pacific"
+mpv_clean$race   [mpv_clean$race == "Unknown race"] <- "Unknown"
+# mpv_clean)
+```
+
+### Exploratory analysis: check gender distribution
+
+```{r message=FALSE, warning=FALSE}
+mpv_gender <- group_by (mpv_clean, gender) %>% summarise(shootings=n())
+mpv_gender
+ggplot(mpv_gender, aes(gender, shootings, color=gender, fill=gender, na.rm=TRUE)) +
+  geom_bar(stat="identity") +  labs (title = "1. Shootings by Gender")
+  
+```
+
+### Exploratory analysis: check race, gender distribution
+
+```{r message=FALSE, warning=FALSE}
+mpv_racegender1 <- filter(mpv_clean, race==c("White", "Black", "Hispanic")) %>%
+    group_by (race, gender) %>% summarise(shootings=n())
+mpv_racegender1
+mpv_racegender2 <- filter(mpv_clean, race==c("Asian", "Pacific", "Native", "Unknown")) %>%
+    group_by (race, gender) %>% summarise(shootings=n())
+mpv_racegender2
+p1 <- ggplot(mpv_racegender1, aes(race, shootings, color=gender, fill=gender)) +
+        geom_bar(stat="identity", position="dodge") +  labs (title = "2. Shootings by race and gender")
+p2 <- ggplot(mpv_racegender2, aes(race, shootings, color=gender, fill=gender)) +
+        geom_bar(stat="identity", position="dodge")
+p1 + p2    # patchwork command to combine plots
+```
+
+
+### Exploratory analysis: check time distribution and cumulative shootings
+
+```{r message=FALSE, warning=FALSE}
+mpv_date <- filter (mpv_clean) %>%        
+  group_by (gender, date=mdy(date)) %>%     # group by gender and convert dates to date format
+  summarise(shootings=n()) %>%              # add up shootings by gender
+  mutate(total=cumsum(shootings))           # add cumulative total
+mpv_date                                    # data frame of shootings per day and cumulative
+
+mpv_date1 <- filter (mpv_clean, gender=="Male") %>% 
+  group_by (gender, date=mdy(date)) %>%     # as above for males
+  summarise(shootings=n()) %>%
+  mutate(total=cumsum(shootings))
+mpv_date1                                   # shootings per day and cumulative for males
+
+mpv_date2 <- filter (mpv_clean, gender==c("Female" , "Transgender", "Unknown")) %>% 
+  group_by (gender, date=mdy(date)) %>%     # as above for females and other genders
+  summarise(shootings=n()) %>%
+  mutate(total=cumsum(shootings))
+mpv_date2                                   # shootings per day and cumulative for females and others
+  
+p3<- ggplot(mpv_date1) +
+   geom_point(aes(date,shootings, colour = gender)) + scale_color_manual(values = "blue") +
+    labs (title = "3. Shootings per day by gender")
+p4<- ggplot(mpv_date2) +
+   geom_point(aes(date,shootings, colour = gender)) + scale_color_manual(values = c("red", "purple", "yellow"))
+p5<- ggplot(mpv_date1)+
+   geom_point(aes(date,total, colour = gender)) + scale_color_manual(values = "blue") +
+    labs (title = "4. Accumulated shootings over time by gender")
+p6<- ggplot(mpv_date2)+
+   geom_point(aes(date,total, colour = gender)) + scale_color_manual(values = c("red", "purple", "yellow"))
+p7<- ggplot(mpv_date) +
+   geom_point(aes(date,total, colour = gender)) +
+     facet_wrap(~gender) + scale_color_manual(values = c("red", "blue", "purple", "yellow")) +
+    labs (title = "5. All together: facet-wrap of accumulated shootings over time by gender")
+p3 / p4   # patchwork command to combine plots
+p5 / p6
+p7
+```
+
+### Exploratory analysis: check age distribution
+
+```{r message=FALSE, warning=FALSE}
+mpv_age <- mpv_clean %>% group_by (age=as.numeric(age)) %>%
+summarise(shootings=n())
+mpv_age
+# plot(mpv_age)             # simple plot
+p7 <- ggplot(mpv_age) +     # try out the same with ggplot
+        geom_point(aes(age,shootings)) + labs (title = "6. Shootings by age of victim")
+p7
+p7 +   geom_smooth(aes(age,shootings)) + # explore loess smoothing
+                    labs (title = "7. Try loess smoothing")
+p7 +   geom_smooth(aes(age,shootings), method="lm", formula=y~poly(x,3)) +  #  explore cubic smooting
+                    labs (title = "8. Try cubic function")
+p7 +   geom_smooth(aes(age,shootings), method="gam", formula=y~s(x)) +   #  explore a Gen. Additive Model
+                    labs (title = "9. Try Generative Additive Model")
+```
+
+### Cleaner analysis of interaction between age and race
+
+```{r message=FALSE, warning=FALSE}
+mpv_age_race <- filter(mpv_clean, race==c("White", "Black", "Hispanic")) %>%  # filter race
+  group_by (race, age=as.numeric(age)) %>%                                    # group by age
+summarise(shootings=n())                                                      # count shootings
+mpv_age_race
+
+p8 <- ggplot(mpv_age_race) +
+        geom_point(aes(age,shootings, color= race))  +  labs (title = "10. Shootings by age and race")           
+p8
+p8 +   geom_smooth(aes(age,shootings), method="gam", formula=y~s(x)) + # use a GAM for global fit
+                       labs (title = "11. Global fit with a GAM")
+p8 +   geom_smooth(aes(age,shootings, color=race), method="gam", formula=y~s(x), se=FALSE) + # without SE
+        labs (title = "12. Shootings Target the Young", x="Age", y="Shootings")
+```
+
+### Analysis of death distribution by State and cause of death over the 2013-2020 period
+
+```{r message=FALSE, warning=FALSE}
+mpv_state <- mpv_clean %>% group_by(state) %>% summarise(deaths=n())
+mpv_state
+
+mpv_state_cause <- filter(mpv_clean, grepl("Gunshot",cause) | grepl("^Taser",cause) | cause=="Asphyxiated" | grepl("Beaten", cause) | cause=="Physical Restraint" | cause =="Vehicle" )   %>%
+  group_by (state, cause) %>% summarise(deaths=n())
+mpv_state_cause
+```
+
+### Generate a USA map for further plots
+
+```{r message=FALSE, warning=FALSE}
+#head(us_map())
+#head(statepop)
+#plot_usmap("states")
+
+p9 <- plot_usmap(data =statepop, values="pop_2015") +  #add labels=T if state Abbrev are desired
+  scale_fill_continuous(low="white", high="blue", name="Population (2015)", label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+                       labs(title = "13. State Population",
+                       subtitle = "in 2015") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+
+```
+
+### Join the StatePop dataset of 2015 with the MPV datasets to add a population variable
+#### and calculate death rate for each state as (deaths/population) per 1M people
+
+```{r message=FALSE, warning=FALSE}
+mpv_state_pop <- left_join(mpv_state, statepop[,c("abbr","pop_2015")], by=c("state"="abbr")) %>%
+  mutate(deathrate = deaths/pop_2015*1000000)
+mpv_state_pop
+
+mpv_state_cause_pop <- left_join(mpv_state_cause, statepop[,c("abbr","pop_2015")], by=c("state"="abbr")) %>%
+  mutate(deathrate = deaths/pop_2015*1000000)
+mpv_state_cause_pop
+```
+
+### Generate a USA mapplot of total deaths for each state for 2013-2020
+
+```{r message=FALSE, warning=FALSE}
+p10 <- plot_usmap(data= mpv_state_pop, values="deathrate") +  #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="red", name="Death Rate per Million Inhabitants", label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "14. All Police-Caused Deaths",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Generate a USA mapplot for cumulative deaths by Gunshot for each state
+
+```{r message=FALSE, warning=FALSE}
+p11 <- plot_usmap(data= filter(mpv_state_cause_pop, grepl("Gunshot",cause)), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="purple", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "15. Leading Cause: Gunshots",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Map of deaths by Asphyxiation
+
+```{r message=FALSE, warning=FALSE}
+p12 <- plot_usmap(data= filter(mpv_state_cause_pop, cause=="Asphyxiated"), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="yellow", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "16. Leading Cause: Asphyxiation",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+
+```
+
+### Map of deaths by Physical Restraint
+
+```{r message=FALSE, warning=FALSE}
+p13 <- plot_usmap(data= filter(mpv_state_cause_pop, cause=="Physical Restraint"), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="chocolate1", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "17. Leading Cause: Physical Restraint",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Map of deaths by Beating
+
+```{r message=FALSE, warning=FALSE}
+p14 <- plot_usmap(data= filter(mpv_state_cause_pop, grepl("Beaten", cause)), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="magenta", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "18. Leading Cause: Beaten",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Map of deaths by Vehicle
+
+```{r message=FALSE, warning=FALSE}
+p15 <- plot_usmap(data= filter(mpv_state_cause_pop, cause=="Vehicle"), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="aquamarine", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "19. Leading Cause: Vehicle",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Map of deaths by Taser
+
+```{r message=FALSE, warning=FALSE}
+p16 <- plot_usmap(data= filter(mpv_state_cause_pop, grepl("^Taser",cause)), values="deathrate") +  
+                            #add labels=T for state abbr
+  scale_fill_continuous(low="white", high="chartreuse", name="Death Rate per Million Inhabitants",
+                        label=scales::comma,
+                        guide=guide_colorbar(barwidth=15, barheight=0.5, title.position = "top")) +
+ labs(title = "20. Leading Cause: Taser",
+       subtitle = "in the 2013-2020 period") + 
+  theme(panel.background = element_rect(color = "black", fill = "lightblue"), legend.position="bottom")
+```
+
+### Present all maps
+
+```{r message=FALSE, warning=FALSE}
+p9+p10
+p10+p11
+p12+p13
+p14+p15
+p10+p16
+```
+
+## Correlations in the Mapping Police Violence Dataset
+### How Police-Caused Deaths Relate to Race, Age, and Geography
+
+R. Miranda
+
+October 13, 2020
+
+#### Origin of the Dataset
+
+https://mappingpoliceviolence.org/s/MPVDatasetDownload.xlsx
+with the 2013-2020 record of Police killings.
+
+#### Description of the Dataset
+
+The MPV project defines Police Killing as a case where a person dies as a result of being shot, beaten, restrained, intentionally hit by a police vehicle, pepper sprayed, tasered, or otherwise harmed by police officers, whether on-duty or off-duty.
+
+A person was coded as unarmed when not holding any weapon or object when killed; when household/personal objects were not used to attach;  when holding toy weapons; when bystanders or hostages were killed by the police; and when persons were hit by police cars. A person was coded as allegedly armed under other circumstances.
+
+A person was coded as using a vehicle as a weapon when killed by police while driving to attack; when killed while escaping by car at high speeds. Persons who crash without being hit by the police, or are hit and killed by a civilian driver are not included in the database.
+
+The full dataset, originally in Excel, contains 29 variables and 8428 records as of 10/04/2020. It was downloaded and save as .csv in my desktop drive.
+
+The variables include the victim's name, gender, race, face image if available at fatalencounters.org, date of incident, address, city, state, zip, county, agency or police department responsible for incident and the ORI identifier, the cause of death, a brief description of the encounter, the officiall disposition of the case at present, whether criminal charges exist, link to news article, symptoms of mental illness, whether victim was unarmed, alleged weapon from the Washington Post database, alleged level of threat from the Washington Post, fleeing circumstance from the Washington Post, body camera (from the Washington Post), Washington Post identifier, off-duty police status, geography (suburban, rural, etc., from Trulia population density map), MPV identifier and Fatal Encounters identifier.
+
+The dataset is rich in details. Additional information is also available from the linked records, such as the background of the police officers (previous killings committed) and of the victims (e.g., on parole) when available. That information was not obtained for the current project.
+
+#### Manipulation of the Dataset
+
+The dataset was reasonably structured and clean, requiring some but not extensive manipulation. It was examined using Excel filtering to check for obvious problems. The continuous variables were converted to numeric (when used), particularly the dates and zips.
+
+Only a subset of 18 variables were selected for further analysis: Age, Gender, Race, Date, City, State, Zipcode, County, Agency, Cause, Disposition, Charges, Mental, Unarmed, Weapon, Threat, Fleeing, Camera.  In the end, because of lack of time, the only variables employed in the analysis were Age, Gender, Race, Date, and State.
+
+Variables with long names were shortened as shown for convenient use in R statements. A complication was that variable names with spaces, special characters, etc., are converted to periods when saving Excel as .csv. Line 48 of the code shows the necessary cleaning.  Some of the gender entries had trailing spaces that needed to be eliminated for efficient sorting. Race values were also shortened, as shown in line 50-55.
+
+#### Exploratory data analysis of gender and race
+
+The initial exploration was the distribution of dead victims according to gender. Code line 60 shows grouping by gender and summarizing all shootings by gender (shooting is the generic term used here for a dead victim.) Ggplot bargraph was used.
+
+As depicted in Fig. 1 bar chart, the vast majority are males, 5% are females, and a small minority are transgender or unknown.
+
+A second step was to examine the interaction between gender and race on the number of shootings. As shown in Fig. 2 bar charts, white females are about 8% of the white victims, while hispanic females are about 5% of the hispanic victims. For black females, the percentage is about 2.5% of black victims, and for Asian Pacific, Native Americans, and unknown race, it's smaller than 2% of corresponding victims.
+
+In terms of racial distribution, black victims amount to 26% of shootings, hispanic are 17%, white are 45%, asian and native groups are 2.5% and the remainder are of unknown race. It is important to notice that black plus hispanic victims amount to about 95% of white victims, more than the make-up of the population.
+
+
+#### Using the package "patchwork" for some of the figures
+
+In order to place figures side to side or special arrangements, we used "patchwork", a package downloaded from cran.rstudio.com and documented at the top of the code.  This was used for Fig. 2 and subsequent ones.
+
+Detail about Fig. 2: we divided up the plot into two bar charts: the y-axis range of the left chart is 4 times that of the right one, in order to visualize better the differences between majority and minority victims. "Patchwork" allows for placing the two plots side by side.
+
+#### Exploratory data analysis of time distribution
+
+We explored the daily and cumulative number of shootings over the 2013-2020 period, in code lines 86-122.
+The shootings were separated for males, females, transgender and other.
+Fig. 3 shows an uncomfortable steady level of daily shootings over the 7.7 year period, at about 2.9 deaths per day for males and about 0.15 deaths per day for females, showing no sign of improvement over the period.
+Figs. 4 and 5 show the cumulative increase over time for all genders, and the constant slope conveys the same conclusion.
+
+#### Exploratory data analysis of age distribution
+
+In code lines 126-140 we explored shootings according to age of victim.
+Fig. 6 shows a negatively-skewed bell curve with a mean of about 30 years of age.
+We tried various smoothing functions, as shown in Figs. 7-9, a loess smoothing, cubic function and a generative additive model. Certainly the GAM is the better model, although the default GAM model fails slightly between ages of 0 and 10.
+
+#### Analysis of interaction between race and age
+
+In code 144-157 we looked at how race affects the age distribution of victims.
+Figs. 10-12 show that the mean for black victims is lower, at about 27 years of age, than for hispanic at about 28 and white victims at 30 years of age.
+
+#### Analysis of shootings by State and cause of death
+
+In code 160-196 we explored the usmap library and the plot_usmap package to visualize shootings by state and cause of death.
+
+We joined the MPV dataset and the StatePopulation dataset, and in line 195 defined the death rate as deaths/state-population per million inhabitants. 
+
+We filtered out the following causes of death: Gunshot, Asphyxiation, Physical Restraint, Beating, Vehicle and Taser, and plotted the sums by state on the USA map, with color intensity scaled according to death rate.
+
+Figs. 13 and 14 compare the state population with the total death rate by all causes, showing the predominance of Oklahoma, Alabama, Alaska, and the relatively high death rate for some mid western states.
+Figs. 14 and 15 show that the leading cause is gunshots for those same states.
+Figs. 16 to 20 show the state distribution of the lesser causes of death, asphyxiation, physical restraint, beating, and taser.  The dark grey color indicates states that didn't have any occurrence.
+
+####  What could be done better
+
+The analysis of these factors corroborate results presented by others and are not surprising at this stage. With more effort, other aspects of the same MPV dataset could analyzed in depth, such as relations between unarmed victims and race, age, and state.  Likewise, correlations of those variables with mental state could be important. With even more work, there is important information in the description of events, which could show revealing trends. The news articles, if they could be mined automatically, would be invaluable.
+
+The Town-Hall event revealed personal experiences that started in all cases at an early age with confrontations against police personnel who were not well trained to understand actions of young individuals. Many of those confrontations could lead to unjustified police violence. This project actually confirms that sadly death rises dramatically between 15 and 30 years of age.
+
+In terms of graphics, this project gave me the opportunity to start exploring some visualization techniques. The mapping packages are of course very nice and I could learn a lot more. The next step is to include more quantitative information in them, as well as interactive features.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
